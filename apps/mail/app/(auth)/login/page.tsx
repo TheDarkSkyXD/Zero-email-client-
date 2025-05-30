@@ -1,79 +1,60 @@
-"use client";
+import { authProviders, customProviders, isProviderEnabled } from '@zero/server/auth-providers';
+import { LoginClient } from './login-client';
+import { useLoaderData } from 'react-router';
+import { env } from 'cloudflare:workers';
 
-import { GitHub, Google } from "@/components/icons/icons";
-import { signIn, useSession } from "@/lib/auth-client";
-import { Button } from "@/components/ui/button";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-import Image from "next/image";
-import { toast } from "sonner";
+export function loader() {
+  const isProd = !import.meta.env.DEV;
 
-export default function Login() {
-  const router = useRouter();
-  const { data: session, isPending } = useSession();
+  const authProviderStatus = authProviders(env as unknown as Record<string, string>).map(
+    (provider) => {
+      const envVarStatus =
+        provider.envVarInfo?.map((envVar) => {
+          const envVarName = envVar.name as keyof typeof env;
+          return {
+            name: envVar.name,
+            set: !!env[envVarName],
+            source: envVar.source,
+            defaultValue: envVar.defaultValue,
+          };
+        }) || [];
 
-  useEffect(() => {
-    if (!isPending && session?.connectionId) {
-      router.push("/mail");
-    }
-  }, [session, isPending, router]);
+      return {
+        id: provider.id,
+        name: provider.name,
+        enabled: isProviderEnabled(provider, env as unknown as Record<string, string>),
+        required: provider.required,
+        envVarInfo: provider.envVarInfo,
+        envVarStatus,
+      };
+    },
+  );
 
-  if (isPending || (session && session.connectionId)) return null;
+  const customProviderStatus = customProviders.map((provider) => {
+    return {
+      id: provider.id,
+      name: provider.name,
+      enabled: true,
+      isCustom: provider.isCustom,
+      customRedirectPath: provider.customRedirectPath,
+      envVarStatus: [],
+    };
+  });
+
+  const allProviders = [...customProviderStatus, ...authProviderStatus];
+
+  return {
+    allProviders,
+    isProd,
+  };
+}
+
+export default function LoginPage() {
+  const { allProviders, isProd } = useLoaderData<typeof loader>();
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-white dark:bg-black">
-      <div className="max-w-[500px] space-y-8 px-4 duration-500 animate-in slide-in-from-bottom-4 sm:px-12 md:px-0">
-        <p className="text-center font-mono text-4xl font-bold md:text-5xl">Welcome to 0</p>
-        <div className="flex w-full items-center justify-center">
-          <Image
-            src="/mail.svg"
-            alt="logo"
-            className="w-[300px] sm:w-[500px]"
-            width={500}
-            height={500}
-          />
-        </div>
-        <div className="relative z-10 mx-auto flex w-full flex-col items-center justify-center gap-2 sm:flex-row">
-          <Button
-            onClick={async () => {
-              toast.promise(
-                signIn.social({
-                  provider: "google",
-                  callbackURL: "/mail",
-                }),
-                {
-                  loading: "Redirecting...",
-                  success: "Redirected successfully!",
-                  error: "Login redirect failed",
-                },
-              );
-            }}
-            className="h-9 w-full rounded-lg border-2 border-input bg-background bg-black text-primary hover:bg-accent hover:text-accent-foreground"
-          >
-            <Google />
-            Continue with Google
-          </Button>
-          <Button
-            onClick={async () => {
-              toast.promise(
-                signIn.social({
-                  provider: "github",
-                  callbackURL: "/mail",
-                }),
-                {
-                  loading: "Redirecting...",
-                  success: "Redirected successfully!",
-                  error: "Login redirect failed",
-                },
-              );
-            }}
-            className="h-9 w-full rounded-lg border-2 border-input bg-background bg-black text-primary hover:bg-accent hover:text-accent-foreground"
-          >
-            <GitHub />
-            Continue with Github
-          </Button>
-        </div>
-      </div>
+    <div className="flex min-h-screen w-full flex-col bg-white dark:bg-black">
+      <LoginClient providers={allProviders} isProd={isProd} />
     </div>
   );
 }

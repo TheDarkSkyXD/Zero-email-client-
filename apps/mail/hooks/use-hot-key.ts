@@ -1,95 +1,67 @@
-import { useCallback, useRef, useLayoutEffect, useState, useEffect } from "react";
+import { useCallback } from 'react';
 
-export const useHotKey = (
-  shortcut: string,
-  callback: (event?: KeyboardEvent) => void,
-  options = { disableTextInputs: true },
-) => {
-  const callbackRef = useRef(callback);
-  const [keyCombo, setKeyCombo] = useState<string[]>([]);
+const keyStates = new Map<string, boolean>();
 
-  useLayoutEffect(() => {
-    callbackRef.current = callback;
-  });
+let listenersInit = false;
 
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent) => {
-      const isTextInput =
-        event.target instanceof HTMLTextAreaElement ||
-        (event.target instanceof HTMLInputElement &&
-          (!event.target.type || event.target.type === "text")) ||
-        (event.target as HTMLElement).isContentEditable;
-
-      const modifierMap: Record<string, boolean> = {
-        Control: event.ctrlKey,
-        Alt: event.altKey,
-        Command: event.metaKey,
-        Meta: event.metaKey,
-        Shift: event.shiftKey,
-      };
-
-      if (event.repeat) {
-        return null;
+function initKeyListeners() {
+  if (typeof window !== 'undefined' && !listenersInit) {
+    window.addEventListener('keydown', (e) => {
+      // Store the key state
+      keyStates.set(e.key, true);
+      
+      // Also store specific states for modifier keys
+      if (e.altKey) {
+        keyStates.set('Alt', true);
+        keyStates.set('AltLeft', true);
+        keyStates.set('AltRight', true);
       }
-
-      // Allow Escape key to work even in text inputs
-      if (shortcut === "Escape" || shortcut === "Esc") {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          return callbackRef.current(event);
-        }
-      } else if (options.disableTextInputs && isTextInput) {
-        return event.stopPropagation();
+      
+      if (e.shiftKey) {
+        keyStates.set('Shift', true);
+        keyStates.set('ShiftLeft', true);
+        keyStates.set('ShiftRight', true);
       }
+      
+      console.log('Key down:', e.key, 'Alt:', e.altKey, 'Shift:', e.shiftKey);
+    });
 
-      if (shortcut.includes("+")) {
-        const keyArray = shortcut.split("+");
-
-        // @ts-expect-error
-        if (Object.keys(modifierMap).includes(keyArray[0])) {
-          const finalKey = keyArray.pop();
-
-          if (
-            finalKey &&
-            keyArray.every((k) => modifierMap[k]) &&
-            finalKey.toLowerCase() === event.key.toLowerCase()
-          ) {
-            event.preventDefault();
-            return callbackRef.current(event);
-          }
-        } else {
-          if (keyArray[keyCombo.length] === event.key) {
-            if (
-              keyArray[keyArray.length - 1] === event.key &&
-              keyCombo.length === keyArray.length - 1
-            ) {
-              event.preventDefault();
-              callbackRef.current(event);
-              return setKeyCombo([]);
-            }
-
-            return setKeyCombo((prevCombo) => [...prevCombo, event.key]);
-          }
-
-          if (keyCombo.length > 0) {
-            return setKeyCombo([]);
-          }
-        }
+    window.addEventListener('keyup', (e) => {
+      // Clear the key state
+      keyStates.set(e.key, false);
+      
+      // Also clear specific states for modifier keys
+      if (e.key === 'Alt' || e.key === 'AltLeft' || e.key === 'AltRight') {
+        keyStates.set('Alt', false);
+        keyStates.set('AltLeft', false);
+        keyStates.set('AltRight', false);
       }
-
-      if (shortcut === event.key) {
-        event.preventDefault();
-        return callbackRef.current(event);
+      
+      if (e.key === 'Shift' || e.key === 'ShiftLeft' || e.key === 'ShiftRight') {
+        keyStates.set('Shift', false);
+        keyStates.set('ShiftLeft', false);
+        keyStates.set('ShiftRight', false);
       }
-    },
-    [keyCombo.length, options.disableTextInputs, shortcut],
-  );
+      
+      console.log('Key up:', e.key);
+    });
 
-  useEffect(() => {
-    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener('blur', () => {
+      // Clear all key states when window loses focus
+      keyStates.forEach((_, key) => {
+        keyStates.set(key, false);
+      });
+      console.log('Window blur - all keys reset');
+    });
 
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [handleKeyDown]);
-};
+    listenersInit = true;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  setTimeout(() => initKeyListeners(), 0);
+}
+
+export function useKeyState() {
+  return useCallback((key: string) => keyStates.get(key) || false, []);
+}

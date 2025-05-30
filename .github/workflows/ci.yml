@@ -1,0 +1,25 @@
+name: autofix.ci
+
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  autofix:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code 🛎
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm 🌟
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node 📦
+        uses: actions/setup-node@v4
+
+      - name: Install dependencies 📦
+        run: pnpm install

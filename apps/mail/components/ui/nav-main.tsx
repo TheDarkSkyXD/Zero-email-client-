@@ -1,41 +1,61 @@
-"use client";
-
-import { usePathname, useSearchParams } from "next/navigation";
-import { useRef, useCallback } from "react";
-import * as React from "react";
-import Link from "next/link";
-
 import {
-  SidebarGroup,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-} from "./sidebar";
-import { Collapsible, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Badge } from "@/components/ui/badge";
-import { BASE_URL } from "@/lib/constants";
-import { cn } from "@/lib/utils";
-import { useStats } from "@/hooks/use-stats";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from './sidebar';
+import { Collapsible, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { useActiveConnection, useConnections } from '@/hooks/use-connections';
+import { type MessageKey, type NavItem } from '@/config/navigation';
+import { LabelDialog } from '@/components/labels/label-dialog';
+import { useSearchValue } from '@/hooks/use-search-value';
+import { useSidebar } from '../context/sidebar-context';
+import { useTRPC } from '@/providers/query-provider';
+import { RecursiveFolder } from './recursive-folder';
+import { useMutation } from '@tanstack/react-query';
+import type { Label as LabelType } from '@/types';
+import { Link, useLocation } from 'react-router';
+import { Button } from '@/components/ui/button';
+import { useLabels } from '@/hooks/use-labels';
+import { useSession } from '@/lib/auth-client';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { useStats } from '@/hooks/use-stats';
+import SidebarLabels from './sidebar-labels';
+import { CurvedArrow } from '../icons/icons';
+import { Command, Plus } from 'lucide-react';
+import { Tree } from '../magicui/file-tree';
+import { useCallback, useRef } from 'react';
+import { BASE_URL } from '@/lib/constants';
+import { useTranslations } from 'use-intl';
+import { useForm } from 'react-hook-form';
+import type { Label } from '@/types';
+import { useQueryState } from 'nuqs';
+import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import * as React from 'react';
 
 interface IconProps extends React.SVGProps<SVGSVGElement> {
   ref?: React.Ref<SVGSVGElement>;
   startAnimation?: () => void;
   stopAnimation?: () => void;
 }
-
-interface NavItemProps {
-  title: string;
-  url: string;
-  icon?: React.ComponentType<IconProps>;
-  badge?: number;
+interface NavItemProps extends NavItem {
   isActive?: boolean;
   isExpanded?: boolean;
   onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
   suffix?: React.ComponentType<IconProps>;
-  isBackButton?: boolean;
-  isSettingsButton?: boolean;
   isSettingsPage?: boolean;
-  disabled?: boolean;
 }
 
 interface NavMainProps {
@@ -52,8 +72,27 @@ type IconRefType = SVGSVGElement & {
 };
 
 export function NavMain({ items }: NavMainProps) {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const location = useLocation();
+  const pathname = location.pathname;
+  const searchParams = new URLSearchParams();
+  const [category] = useQueryState('category');
+
+  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+  const { data: session } = useSession();
+  const { data: connections } = useConnections();
+  const { data: stats } = useStats();
+  const { data: activeConnection } = useActiveConnection();
+
+  const trpc = useTRPC();
+
+  const { mutateAsync: createLabel } = useMutation(trpc.labels.create.mutationOptions());
+
+  const { data, refetch } = useLabels();
+
+  const { state } = useSidebar();
+
+  // Check if these are bottom navigation items by looking at the first section's title
+  const isBottomNav = items[0]?.title === '';
 
   /**
    * Validates URLs to prevent open redirect vulnerabilities.
@@ -67,7 +106,7 @@ export function NavMain({ items }: NavMainProps) {
   const isValidInternalUrl = useCallback((url: string) => {
     if (!url) return false;
     // Accept absolute paths as they are always internal
-    if (url.startsWith("/")) return true;
+    if (url.startsWith('/')) return true;
     try {
       const urlObj = new URL(url, BASE_URL);
       // Prevent redirects to external domains by checking against our base URL
@@ -80,8 +119,7 @@ export function NavMain({ items }: NavMainProps) {
   const getHref = useCallback(
     (item: NavItemProps) => {
       // Get the current 'from' parameter
-      const currentFrom = searchParams.get("from");
-      const category = searchParams.get("category");
+      const currentFrom = searchParams.get('from');
 
       // Handle settings navigation
       if (item.isSettingsButton) {
@@ -90,6 +128,18 @@ export function NavMain({ items }: NavMainProps) {
           ? `${pathname}?category=${encodeURIComponent(category)}`
           : pathname;
         return `${item.url}?from=${encodeURIComponent(currentPath)}`;
+      }
+
+      // Handle back button with redirect protection
+      if (item.isBackButton) {
+        if (currentFrom) {
+          const decodedFrom = decodeURIComponent(currentFrom);
+          if (isValidInternalUrl(decodedFrom)) {
+            return decodedFrom;
+          }
+        }
+        // Fall back to safe default if URL is missing or invalid
+        return '/mail';
       }
 
       // Handle settings pages navigation
@@ -103,36 +153,29 @@ export function NavMain({ items }: NavMainProps) {
         return `${item.url}?from=/mail`;
       }
 
-      // Handle back button with redirect protection
-      if (item.isBackButton) {
-        if (currentFrom) {
-          const decodedFrom = decodeURIComponent(currentFrom);
-          if (isValidInternalUrl(decodedFrom)) {
-            return decodedFrom;
-          }
-        }
-        // Fall back to safe default if URL is missing or invalid
-        return "/mail";
-      }
-
       // Handle category links
-      if (category && item.url.includes("category=")) {
-        return item.url;
+      if (item.id === 'inbox' && category) {
+        return `${item.url}?category=${encodeURIComponent(category)}`;
       }
 
       return item.url;
     },
-    [pathname, searchParams, isValidInternalUrl],
+    [pathname, category, searchParams, isValidInternalUrl],
   );
+
+  const activeAccount = React.useMemo(() => {
+    if (!activeConnection?.id || !connections?.connections) return null;
+    return connections.connections.find((connection) => connection.id === activeConnection?.id);
+  }, [activeConnection?.id, connections?.connections]);
 
   const isUrlActive = useCallback(
     (url: string) => {
       const urlObj = new URL(
         url,
-        typeof window === "undefined" ? BASE_URL : window.location.origin,
+        typeof window === 'undefined' ? BASE_URL : window.location.origin,
       );
-      const cleanPath = pathname.replace(/\/$/, "");
-      const cleanUrl = urlObj.pathname.replace(/\/$/, "");
+      const cleanPath = pathname.replace(/\/$/, '');
+      const cleanUrl = urlObj.pathname.replace(/\/$/, '');
 
       if (cleanPath !== cleanUrl) return false;
 
@@ -147,8 +190,16 @@ export function NavMain({ items }: NavMainProps) {
     [pathname, searchParams],
   );
 
+  const onSubmit = async (data: LabelType) => {
+    await toast.promise(createLabel(data), {
+      loading: 'Creating label...',
+      success: 'Label created successfully',
+      error: 'Failed to create label',
+    });
+  };
+
   return (
-    <SidebarGroup className="space-y-2.5 py-0">
+    <SidebarGroup className={`${state !== 'collapsed' ? '' : 'mt-1'} space-y-2.5 py-0 md:px-0`}>
       <SidebarMenu>
         {items.map((section) => (
           <Collapsible
@@ -157,19 +208,62 @@ export function NavMain({ items }: NavMainProps) {
             className="group/collapsible"
           >
             <SidebarMenuItem>
-              <div className="space-y-1">
+              {state !== 'collapsed' ? (
+                section.title ? (
+                  <p className="text-muted-foreground mx-2 mb-2 text-[13px] dark:text-[#898989]">
+                    {section.title}
+                  </p>
+                ) : null
+              ) : (
+                <div className="bg-muted-foreground/50 mx-2 mb-4 mt-2 h-[0.5px] dark:bg-[#262626]" />
+              )}
+              <div className="z-20 space-y-1 pb-2">
                 {section.items.map((item) => (
                   <NavItem
                     key={item.url}
                     {...item}
                     isActive={isUrlActive(item.url)}
                     href={getHref(item)}
+                    target={item.target}
+                    title={item.title}
                   />
                 ))}
               </div>
             </SidebarMenuItem>
           </Collapsible>
         ))}
+        {!pathname.includes('/settings') && !isBottomNav && state !== 'collapsed' && (
+          <Collapsible defaultOpen={true} className="group/collapsible flex-col">
+            <SidebarMenuItem className="mb-4" style={{ height: 'auto' }}>
+              <div className="mx-2 mb-4 flex items-center justify-between">
+                <span className="text-muted-foreground text-[13px] dark:text-[#898989]">
+                  {activeAccount?.providerId === 'google' ? 'Labels' : 'Folders'}
+                </span>
+                {activeAccount?.providerId === 'google' ? (
+                  <LabelDialog
+                    trigger={
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="mr-1 h-4 w-4 p-0 hover:bg-transparent"
+                      >
+                        <Plus className="text-muted-foreground h-3 w-3 dark:text-[#898989]" />
+                      </Button>
+                    }
+                    onSubmit={onSubmit}
+                    onSuccess={refetch}
+                  />
+                ) : activeAccount?.providerId === 'microsoft' ? null : null}
+              </div>
+
+              <SidebarLabels
+                data={data ?? []}
+                activeAccount={activeAccount ?? null}
+                stats={stats}
+              />
+            </SidebarMenuItem>
+          </Collapsible>
+        )}
       </SidebarMenu>
     </SidebarGroup>
   );
@@ -178,53 +272,57 @@ export function NavMain({ items }: NavMainProps) {
 function NavItem(item: NavItemProps & { href: string }) {
   const iconRef = useRef<IconRefType>(null);
   const { data: stats } = useStats();
+  const t = useTranslations();
+  const { state } = useSidebar();
 
   if (item.disabled) {
     return (
       <SidebarMenuButton
-        tooltip={item.title}
+        tooltip={state === 'collapsed' ? t(item.title as MessageKey) : undefined}
         className="flex cursor-not-allowed items-center opacity-50"
       >
         {item.icon && <item.icon ref={iconRef} className="relative mr-2.5 h-3 w-3.5" />}
-        <p className="mt-0.5 text-[13px]">{item.title}</p>
+        <p className="mt-0.5 truncate text-[13px]">{t(item.title as MessageKey)}</p>
       </SidebarMenuButton>
     );
   }
 
-  // Apply animation handlers to all buttons including back buttons
-  const linkProps = {
-    href: item.href,
-    onClick: item.onClick,
-    onMouseEnter: () => iconRef.current?.startAnimation?.(),
-    onMouseLeave: () => iconRef.current?.stopAnimation?.(),
-  };
+  const { setOpenMobile } = useSidebar();
 
   const buttonContent = (
     <SidebarMenuButton
-      tooltip={item.title}
+      tooltip={state === 'collapsed' ? t(item.title as MessageKey) : undefined}
       className={cn(
-        "hover:bg-subtleWhite dark:hover:bg-subtleBlack flex items-center",
-        item.isActive && "bg-subtleWhite text-accent-foreground dark:bg-subtleBlack",
+        'hover:bg-subtleWhite flex items-center dark:hover:bg-[#202020]',
+        item.isActive && 'bg-subtleWhite text-accent-foreground dark:bg-[#202020]',
       )}
+      onClick={() => setOpenMobile(false)}
     >
-      {item.icon && <item.icon ref={iconRef} className="mr-2" />}
-      <p className="mt-0.5 text-[13px]">{item.title}</p>
-      {stats && stats.find((stat) => stat.label?.toLowerCase() === item.title?.toLowerCase()) && (
-        <Badge className="ml-auto rounded-md" variant="outline">
-          {stats.find((stat) => stat.label?.toLowerCase() === item.title?.toLowerCase())?.count?.toLocaleString()}
-        </Badge>
-      )}
+      {item.icon && <item.icon ref={iconRef} className="mr-2 shrink-0" />}
+      <p className="mt-0.5 min-w-0 flex-1 truncate text-[13px]">{t(item.title as MessageKey)}</p>
+      {stats &&
+        item.id?.toLowerCase() !== 'sent' &&
+        stats.some((stat) => stat.label?.toLowerCase() === item.id?.toLowerCase()) && (
+          <Badge className="text-muted-foreground ml-auto shrink-0 rounded-full border-none bg-transparent">
+            {stats
+              .find((stat) => stat.label?.toLowerCase() === item.id?.toLowerCase())
+              ?.count?.toLocaleString() || '0'}
+          </Badge>
+        )}
     </SidebarMenuButton>
   );
-
-  if (item.isBackButton) {
-    return <Link {...linkProps}>{buttonContent}</Link>;
-  }
 
   return (
     <Collapsible defaultOpen={item.isActive}>
       <CollapsibleTrigger asChild>
-        <Link {...linkProps}>{buttonContent}</Link>
+        <Link
+          to={item.href}
+          prefetch="intent"
+          onClick={item.onClick ? item.onClick : undefined}
+          target={item.target}
+        >
+          {buttonContent}
+        </Link>
       </CollapsibleTrigger>
     </Collapsible>
   );

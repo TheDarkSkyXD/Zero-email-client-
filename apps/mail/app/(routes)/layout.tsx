@@ -1,23 +1,15 @@
-"use client";
+import { HotkeyProviderWrapper } from '@/components/providers/hotkey-provider-wrapper';
+import { CommandPaletteProvider } from '@/components/context/command-palette-context';
+import { Outlet } from 'react-router';
 
-import { CommandPaletteProvider } from "@/components/context/command-palette-context";
-import { dexieStorageProvider } from "@/lib/idb";
-import { SWRConfig } from "swr";
-
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default function Layout() {
   return (
-    <CommandPaletteProvider>
-      <div className="flex h-screen w-screen overflow-hidden">
-        <SWRConfig
-          value={{
-            provider: typeof window !== "undefined" ? dexieStorageProvider : undefined,
-            revalidateOnFocus: false,
-            revalidateIfStale: false,
-          }}
-        >
-          {children}
-        </SWRConfig>
-      </div>
-    </CommandPaletteProvider>
+    <HotkeyProviderWrapper>
+      <CommandPaletteProvider>
+        <div className="relative flex max-h-screen w-full overflow-hidden">
+          <Outlet />
+        </div>
+      </CommandPaletteProvider>
+    </HotkeyProviderWrapper>
   );
 }

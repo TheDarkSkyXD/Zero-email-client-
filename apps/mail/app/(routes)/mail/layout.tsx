@@ -1,14 +1,26 @@
-import { KeyboardShortcuts } from "@/components/mail/keyboard-shortcuts";
-import { AppSidebar } from "@/components/ui/app-sidebar";
-import AISidebar from "@/components/ui/ai-sidebar";
+import { HotkeyProviderWrapper } from '@/components/providers/hotkey-provider-wrapper';
+import { OnboardingWrapper } from '@/components/onboarding';
+import { NotificationProvider } from '@/components/party';
+import { AppSidebar } from '@/components/ui/app-sidebar';
+import { Outlet, useLoaderData } from 'react-router';
+import type { Route } from './+types/layout';
 
-export default function MailLayout({ children }: { children: React.ReactNode }) {
+export async function loader({ request }: Route.LoaderArgs) {
+  return {
+    headers: Object.fromEntries(request.headers.entries()),
+  };
+}
+
+export default function MailLayout() {
+  const { headers } = useLoaderData<typeof loader>();
   return (
-    <>
+    <HotkeyProviderWrapper>
       <AppSidebar />
-      <KeyboardShortcuts />
-      <div className="w-full bg-white md:p-3 dark:bg-black">{children}</div>
-      <AISidebar />
-    </>
+      <div className="bg-sidebar dark:bg-sidebar w-full">
+        <Outlet />
+      </div>
+      <OnboardingWrapper />
+      <NotificationProvider headers={headers} />
+    </HotkeyProviderWrapper>
   );
 }

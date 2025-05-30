@@ -1,5 +1,3 @@
-"use client";
-
 import {
   Form,
   FormControl,
@@ -7,25 +5,25 @@ import {
   FormItem,
   FormLabel,
   FormDescription,
-} from "@/components/ui/form";
+} from '@/components/ui/form';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { SettingsCard } from "@/components/settings/settings-card";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { useForm } from "react-hook-form";
-import { Bell } from "lucide-react";
-import { useState } from "react";
-import * as z from "zod";
+} from '@/components/ui/select';
+import { SettingsCard } from '@/components/settings/settings-card';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { useForm } from 'react-hook-form';
+import { Bell } from 'lucide-react';
+import { useState } from 'react';
+import * as z from 'zod';
 
 const formSchema = z.object({
-  newMailNotifications: z.enum(["none", "important", "all"]),
+  newMailNotifications: z.enum(['none', 'important', 'all']),
   marketingCommunications: z.boolean(),
 });
 
@@ -35,7 +33,7 @@ export default function NotificationsPage() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      newMailNotifications: "all",
+      newMailNotifications: 'all',
       marketingCommunications: false,
     },
   });
@@ -59,7 +57,7 @@ export default function NotificationsPage() {
               Reset to Defaults
             </Button>
             <Button type="submit" form="notifications-form" disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save Changes"}
+              {isSaving ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>
         }
